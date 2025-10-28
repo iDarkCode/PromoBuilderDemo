@@ -1,0 +1,1 @@
+using PromoEngine.Application; namespace PromoEngine.Infrastructure.Authoring{ public sealed class PromotionPublisherMock:IPromotionPublisher{ public Task PublishAsync(Guid promotionId,string countryIso,int version,CancellationToken ct)=> Task.CompletedTask; } }

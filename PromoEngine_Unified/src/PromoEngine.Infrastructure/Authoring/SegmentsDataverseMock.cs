@@ -1,0 +1,1 @@
+using PromoEngine.Application; namespace PromoEngine.Infrastructure.Authoring{ public sealed class SegmentsDataverseMock:ISegmentService{ public Task<IReadOnlyList<string>> GetSegmentsForContactAsync(Guid contactId,string country,CancellationToken ct)=> Task.FromResult<IReadOnlyList<string>>(new[]{"seg:vip","seg:silver"}); } }
