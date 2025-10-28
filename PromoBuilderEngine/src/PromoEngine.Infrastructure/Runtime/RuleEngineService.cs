@@ -48,6 +48,7 @@ namespace PromoEngine.Infrastructure.Runtime
         // Constantes para configuración y logging
         private const string DefaultWorkflowName = "DefaultWorkflow";
         private const string ContextParameterName = "ctx";
+        private const int DefaultMaxCachedEngines = 100;
         private const int DefaultCacheExpirationMinutes = 30;
         private const int MaxCachedEngines = 100;
 
@@ -94,7 +95,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <exception cref="ArgumentException">Cuando los parámetros tienen valores inválidos</exception>
         /// <exception cref="RuleEvaluationException">Cuando ocurre un error durante la evaluación</exception>
         public async Task<bool> EvaluateAsync(
-            WorkflowRules workflow,
+            Workflow workflow,
             string ruleName,
             object context,
             CancellationToken cancellationToken = default)
@@ -177,7 +178,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <param name="cancellationToken">Token de cancelación</param>
         /// <returns>Diccionario con resultados por nombre de regla</returns>
         public async Task<IReadOnlyDictionary<string, bool>> EvaluateMultipleAsync(
-            WorkflowRules workflow,
+            Workflow workflow,
             IEnumerable<string> ruleNames,
             object context,
             CancellationToken cancellationToken = default)
@@ -252,7 +253,8 @@ namespace PromoEngine.Infrastructure.Runtime
             {
                 try
                 {
-                    engine?.Dispose();
+                    // RulesEngine 6.0.0 no implementa IDisposable
+                    // engine?.Dispose();
                 }
                 catch (Exception ex)
                 {
@@ -279,7 +281,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <param name="context">Contexto a validar</param>
         /// <exception cref="ArgumentNullException">Cuando algún parámetro requerido es nulo</exception>
         /// <exception cref="ArgumentException">Cuando algún parámetro tiene valor inválido</exception>
-        private static void ValidateEvaluationParameters(WorkflowRules workflow, string ruleName, object context)
+        private static void ValidateEvaluationParameters(Workflow workflow, string ruleName, object context)
         {
             if (workflow == null)
                 throw new ArgumentNullException(nameof(workflow));
@@ -304,7 +306,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <param name="cancellationToken">Token de cancelación</param>
         /// <returns>Engine de reglas compilado y listo para usar</returns>
         private async Task<RulesEngine.RulesEngine> GetOrCreateRulesEngineAsync(
-            WorkflowRules workflow,
+            Workflow workflow,
             CancellationToken cancellationToken)
         {
             var workflowKey = GenerateWorkflowCacheKey(workflow);
@@ -344,7 +346,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <param name="cancellationToken">Token de cancelación</param>
         /// <returns>Engine compilado</returns>
         private async Task<RulesEngine.RulesEngine> CreateRulesEngineAsync(
-            WorkflowRules workflow,
+            Workflow workflow,
             CancellationToken cancellationToken)
         {
             return await Task.Run(() =>
@@ -352,15 +354,15 @@ namespace PromoEngine.Infrastructure.Runtime
                 var settings = new ReSettings
                 {
                     CustomTypes = _options.CustomTypes?.ToArray(),
-                    IgnoreException = _options.IgnoreExceptions,
-                    EnableExpressionDebug = _options.EnableDebugMode
+                    IgnoreException = _options.IgnoreExceptions
+                    // EnableExpressionDebug no existe en RulesEngine 6.0.0
                 };
 
                 var engine = new RulesEngine.RulesEngine(new[] { workflow }, settings);
                 
                 _logger.LogDebug(
                     "Engine creado para workflow {WorkflowName} con {RuleCount} reglas",
-                    workflow.WorkflowName, workflow.Rules?.Count ?? 0);
+                    workflow.WorkflowName, workflow.Rules?.Count() ?? 0);
 
                 return engine;
             }, cancellationToken);
@@ -386,7 +388,14 @@ namespace PromoEngine.Infrastructure.Runtime
             {
                 try
                 {
-                    var result = await engine.ExecuteRuleAsync(workflowName, ruleName, parameters);
+                    // En RulesEngine 6.0.0 se usa ExecuteAllRulesAsync
+                    var results = await engine.ExecuteAllRulesAsync(workflowName, parameters);
+                    var result = results.FirstOrDefault(r => r.Rule.RuleName == ruleName);
+                    
+                    if (result == null)
+                    {
+                        throw new RuleEvaluationException($"Regla '{ruleName}' no encontrada en el resultado");
+                    }
                     return result;
                 }
                 catch (Exception ex)
@@ -492,7 +501,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// </summary>
         /// <param name="workflow">Workflow para generar la clave</param>
         /// <returns>Clave única para cache</returns>
-        private string GenerateWorkflowCacheKey(WorkflowRules workflow)
+        private string GenerateWorkflowCacheKey(Workflow workflow)
         {
             // Generar hash basado en contenido del workflow para invalidación automática
             var workflowJson = JsonSerializer.Serialize(workflow, new JsonSerializerOptions
@@ -521,7 +530,8 @@ namespace PromoEngine.Infrastructure.Runtime
                     {
                         try
                         {
-                            engineToDispose?.Dispose();
+                            // RulesEngine 6.0.0 no implementa IDisposable
+                            // engineToDispose?.Dispose();
                         }
                         catch (Exception ex)
                         {
@@ -618,12 +628,12 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <summary>
         /// Tiempo de cache para workflows compilados en minutos (por defecto: 30)
         /// </summary>
-        public int CacheExpirationMinutes { get; set; } = DefaultCacheExpirationMinutes;
+        public int CacheExpirationMinutes { get; set; } = 30;
 
         /// <summary>
         /// Número máximo de engines compilados en cache (por defecto: 100)
         /// </summary>
-        public int MaxCachedEngines { get; set; } = MaxCachedEngines;
+        public int MaxCachedEngines { get; set; } = 100;
 
         /// <summary>
         /// Timeout para evaluación de reglas en milisegundos (por defecto: 5000)

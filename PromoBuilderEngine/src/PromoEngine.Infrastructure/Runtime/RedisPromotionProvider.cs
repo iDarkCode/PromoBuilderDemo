@@ -80,7 +80,7 @@ namespace PromoEngine.Infrastructure.Runtime
         /// <returns>Lista de promociones activas con sus versiones correspondientes</returns>
         /// <exception cref="ArgumentException">Cuando countryIso está vacío</exception>
         /// <exception cref="InvalidOperationException">Cuando ocurre un error en la recuperación de datos</exception>
-        public async Task<IReadOnlyList<(Promotion promotion, PromotionVersion version)>> GetActivePromotionsAsync(
+        public async Task<IReadOnlyList<(Promotion p, PromotionVersion pv)>> GetActivePromotionsAsync(
             string countryIso,
             DateTimeOffset asOfUtc,
             CancellationToken cancellationToken = default)

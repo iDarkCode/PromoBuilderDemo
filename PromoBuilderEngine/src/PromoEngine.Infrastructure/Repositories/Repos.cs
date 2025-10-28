@@ -774,7 +774,7 @@ namespace PromoEngine.Infrastructure.Repositories
 
             try
             {
-                var query = _dbContext.ContactRewards
+                IQueryable<ContactReward> query = _dbContext.ContactRewards
                     .AsNoTracking()
                     .Where(cr => cr.ContactId == contactId && cr.PromotionId == promotionId)
                     .OrderByDescending(cr => cr.GrantedAt);

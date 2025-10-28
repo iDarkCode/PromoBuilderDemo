@@ -61,7 +61,7 @@ namespace PromoEngine.Infrastructure.Authoring
         /// <returns>Tupla con el flujo de trabajo compilado y lista de advertencias detectadas</returns>
         /// <exception cref="ArgumentNullException">Cuando algún parámetro requerido es nulo</exception>
         /// <exception cref="InvalidOperationException">Cuando ocurre un error durante la compilación</exception>
-        public (WorkflowRules Workflow, List<string> Warnings) BuildWorkflow(
+        public (Workflow Workflow, List<string> Warnings) BuildWorkflow(
             UpsertPromotionDraftRequest request,
             IReadOnlyDictionary<Guid, AttributeCatalog> attributeCatalog,
             IReadOnlyDictionary<Guid, OperatorCatalog> operatorCatalog,
@@ -82,12 +82,19 @@ namespace PromoEngine.Infrastructure.Authoring
 
             try
             {
-                var workflow = CreateWorkflowStructure(request);
-                CompilePromotionTiers(request, workflow, compilationContext);
+                var workflowStructure = CreateWorkflowStructure(request);
+                CompilePromotionTiers(request, workflowStructure, compilationContext);
+
+                // Asignar las reglas compiladas al workflow
+                var workflow = new Workflow
+                {
+                    WorkflowName = workflowStructure.WorkflowName,
+                    Rules = compilationContext.Rules
+                };
 
                 _logger.LogInformation(
                     "Compilación completada exitosamente. Rules: {RuleCount}, Warnings: {WarningCount}",
-                    workflow.Rules.Count, compilationContext.Warnings.Count);
+                    compilationContext.Rules.Count, compilationContext.Warnings.Count);
 
                 if (compilationContext.Warnings.Any())
                 {
@@ -148,14 +155,14 @@ namespace PromoEngine.Infrastructure.Authoring
         /// </summary>
         /// <param name="request">Solicitud de promoción</param>
         /// <returns>Workflow inicializado con metadatos básicos</returns>
-        private static WorkflowRules CreateWorkflowStructure(UpsertPromotionDraftRequest request)
+        private static Workflow CreateWorkflowStructure(UpsertPromotionDraftRequest request)
         {
             var workflowName = string.Format(CultureInfo.InvariantCulture, 
                 WorkflowNameTemplate, 
                 request.PromotionId ?? Guid.Empty, 
                 request.CountryIso);
 
-            return new WorkflowRules
+            return new Workflow
             {
                 WorkflowName = workflowName,
                 Rules = new List<Rule>()
@@ -170,7 +177,7 @@ namespace PromoEngine.Infrastructure.Authoring
         /// <param name="context">Contexto de compilación</param>
         private void CompilePromotionTiers(
             UpsertPromotionDraftRequest request, 
-            WorkflowRules workflow, 
+            Workflow workflow, 
             CompilationContext context)
         {
             var orderedTiers = request.Tiers
@@ -191,7 +198,7 @@ namespace PromoEngine.Infrastructure.Authoring
         /// <param name="context">Contexto de compilación</param>
         private void CompileTierGroups(
             TierDto tier, 
-            WorkflowRules workflow, 
+            Workflow workflow, 
             CompilationContext context)
         {
             if (tier.Groups == null || tier.Groups.Count == 0)
@@ -234,9 +241,9 @@ namespace PromoEngine.Infrastructure.Authoring
         /// <param name="context">Contexto de compilación</param>
         private void CompileExpressionGroup(
             TierDto tier,
-            GroupDto group,
+            TierExpressionGroupDto group,
             int groupIndex,
-            WorkflowRules workflow,
+            Workflow workflow,
             CompilationContext context)
         {
             if (group.ExpressionRoot == null)
@@ -261,7 +268,7 @@ namespace PromoEngine.Infrastructure.Authoring
                 Expression = compiledExpression
             };
 
-            workflow.Rules.Add(rule);
+            context.Rules.Add(rule);
 
             _logger.LogDebug(
                 "Regla compilada exitosamente. Tier: {TierLevel}, Group: {GroupIndex}, Expression: {Expression}",
@@ -335,7 +342,7 @@ namespace PromoEngine.Infrastructure.Authoring
                 return "true";
             }
 
-            var booleanOperator = DetermineBooleanOperator(node.BoolOperator);
+            var booleanOperator = DetermineBooleanOperator(node.BoolOperator ?? (int)BoolOperator.And);
             var orderedChildren = node.Children.OrderBy(child => child.Order ?? 0);
 
             var compiledChildren = orderedChildren
@@ -572,6 +579,7 @@ namespace PromoEngine.Infrastructure.Authoring
         public IReadOnlyDictionary<Guid, OperatorCatalog> OperatorCatalog { get; }
         public IReadOnlySet<(Guid operatorId, DataType type)> SupportedOperatorTypes { get; }
         public List<string> Warnings { get; }
+        public List<Rule> Rules { get; }
 
         public CompilationContext(
             IReadOnlyDictionary<Guid, AttributeCatalog> attributeCatalog,
@@ -583,6 +591,7 @@ namespace PromoEngine.Infrastructure.Authoring
             OperatorCatalog = operatorCatalog ?? throw new ArgumentNullException(nameof(operatorCatalog));
             SupportedOperatorTypes = supportedOperatorTypes ?? throw new ArgumentNullException(nameof(supportedOperatorTypes));
             Warnings = warnings ?? throw new ArgumentNullException(nameof(warnings));
+            Rules = new List<Rule>();
         }
     }
 }
